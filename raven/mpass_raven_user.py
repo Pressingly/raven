@@ -132,7 +132,8 @@ def clear_grant_marker(doc, method=None) -> None:
 
 
 def move_grant_marker(doc, method=None, old=None, new=None, merge=False) -> None:
-	if not old or not new or not was_granted(old):
+	"""On a merge the target keeps its own state; the old user's marker goes with its deletion."""
+	if merge or not old or not new or not was_granted(old):
 		return
 	frappe.defaults.clear_user_default(GRANT_MARKER, old)
 	mark_granted(new)

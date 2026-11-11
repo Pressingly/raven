@@ -1,3 +1,4 @@
+import importlib.util
 import os
 import sys
 import unittest
@@ -8,13 +9,12 @@ from frappe.tests import IntegrationTestCase
 from frappe.tests.test_api import FrappeAPITestCase, make_request
 from frappe.utils import get_test_client, now_datetime
 
-try:
+MPASS_LAYER = importlib.util.find_spec("frappe.mpass_sso") is not None
+
+if MPASS_LAYER:
 	from frappe.mpass_sso import ACCESS_TOKEN_HEADER, EDGE_SECRET_HEADER, EMAIL_HEADER, provision_user
 	from frappe.tests.test_mpass_sso import EDGE_SECRET, SSO_ENV, corporate_token, purge_test_users
-
-	MPASS_LAYER = True
-except ImportError:
-	MPASS_LAYER = False
+else:
 	ACCESS_TOKEN_HEADER = EDGE_SECRET_HEADER = EMAIL_HEADER = EDGE_SECRET = ""
 	SSO_ENV = {}
 	provision_user = corporate_token = purge_test_users = None
@@ -57,6 +57,11 @@ def save_user(user: str) -> None:
 
 def delete_user(user: str) -> None:
 	frappe.delete_doc("User", user, ignore_permissions=True, force=True)
+
+
+def drop_raven_record(user: str) -> None:
+	"""Raven cannot merge two users who both have a Raven User record: its user link is unique."""
+	frappe.db.delete("Raven User", {"user": user})
 
 
 def revoke(user: str) -> None:
@@ -231,6 +236,17 @@ class TestMpassRavenUser(IntegrationTestCase):
 		self.assertEqual(ensure_raven_user(new), Outcome.REVOKED)
 		self.assertTrue(was_granted(new))
 		self.assertFalse(was_granted(old))
+
+	def test_a_merge_leaves_the_target_its_own_state(self):
+		source = mpass_member("mpass_raven_merge_source@example.com")
+		target = mpass_member("mpass_raven_merge_target@example.com")
+		drop_raven_record(target)
+		ensure_raven_user(source)
+
+		frappe.rename_doc("User", source, target, merge=True, force=True)
+
+		self.assertFalse(was_granted(source))
+		self.assertEqual(ensure_raven_user(target), Outcome.GRANTED)
 
 	def test_backfill_does_nothing_without_sso(self):
 		user = mpass_member("mpass_raven_backfill_no_sso@example.com")
