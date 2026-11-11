@@ -287,7 +287,10 @@ has_permission = {
 	"Raven Workspace": "raven.permissions.workspace_has_permission",
 }
 
-on_session_creation = "raven.api.user_availability.set_user_active"
+on_session_creation = [
+	"raven.api.user_availability.set_user_active",
+	"raven.mpass_raven_user.ensure_raven_user_on_session_creation",
+]
 
 # The bundled native app runs from its own origins; allow them on API calls without site config.
 before_request = ["raven.api.native.set_cors"]
