@@ -9,6 +9,10 @@ The grant is made once. A per-user default (GRANT_MARKER, kept in DefaultValue, 
 leave it alone) records that this user was given Raven access, or already had it when first seen.
 A user who carries the marker but no longer holds the role had it taken away by an admin and is
 left without it: neither later logins nor the backfill grant it again.
+
+Frappe writes user defaults with parenttype "__default", so deleting or renaming a User does not
+touch the marker; the User hooks below clear it on delete and move it on rename, so a re-created
+account starts fresh and a renamed one keeps its revocation.
 """
 
 from collections import Counter
@@ -121,6 +125,17 @@ def was_granted(user: str) -> bool:
 def mark_granted(user: str) -> None:
 	if not was_granted(user):
 		frappe.defaults.set_user_default(GRANT_MARKER, 1, user)
+
+
+def clear_grant_marker(doc, method=None) -> None:
+	frappe.defaults.clear_user_default(GRANT_MARKER, doc.name)
+
+
+def move_grant_marker(doc, method=None, old=None, new=None, merge=False) -> None:
+	if not old or not new or not was_granted(old):
+		return
+	frappe.defaults.clear_user_default(GRANT_MARKER, old)
+	mark_granted(new)
 
 
 def grant_raven_access(user: str) -> None:

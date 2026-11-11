@@ -11,8 +11,15 @@ from frappe.utils import get_test_client, now_datetime
 try:
 	from frappe.mpass_sso import ACCESS_TOKEN_HEADER, EDGE_SECRET_HEADER, EMAIL_HEADER, provision_user
 	from frappe.tests.test_mpass_sso import EDGE_SECRET, SSO_ENV, corporate_token, purge_test_users
-except ImportError as missing_layer:
-	raise unittest.SkipTest("needs the Pressingly/frappe mPass SSO layer") from missing_layer
+
+	MPASS_LAYER = True
+except ImportError:
+	MPASS_LAYER = False
+	ACCESS_TOKEN_HEADER = EDGE_SECRET_HEADER = EMAIL_HEADER = EDGE_SECRET = ""
+	SSO_ENV = {}
+	provision_user = corporate_token = purge_test_users = None
+
+NEEDS_MPASS_LAYER = "needs the Pressingly/frappe mPass SSO layer"
 
 from raven import mpass_raven_user
 from raven.mpass_raven_user import (
@@ -48,10 +55,15 @@ def save_user(user: str) -> None:
 	doc.save(ignore_permissions=True)
 
 
+def delete_user(user: str) -> None:
+	frappe.delete_doc("User", user, ignore_permissions=True, force=True)
+
+
 def revoke(user: str) -> None:
 	frappe.get_doc("User", user).remove_roles(RAVEN_USER_ROLE)
 
 
+@unittest.skipUnless(MPASS_LAYER, NEEDS_MPASS_LAYER)
 class TestMpassRavenUser(IntegrationTestCase):
 	def setUp(self):
 		frappe.set_user("Administrator")
@@ -199,6 +211,27 @@ class TestMpassRavenUser(IntegrationTestCase):
 		self.assertFalse(holds_raven_user_role(never_signed_in))
 		self.assertFalse(holds_raven_user_role(revoked))
 
+	def test_a_deleted_user_re_created_through_sso_is_granted(self):
+		user = mpass_member("mpass_raven_recreated@example.com")
+		ensure_raven_user(user)
+		revoke(user)
+		delete_user(user)
+
+		self.assertFalse(was_granted(user))
+		user = mpass_member("mpass_raven_recreated@example.com")
+		self.assertEqual(ensure_raven_user(user), Outcome.GRANTED)
+
+	def test_a_renamed_revoked_user_stays_revoked(self):
+		old = mpass_member("mpass_raven_old_name@example.com")
+		ensure_raven_user(old)
+		revoke(old)
+
+		new = frappe.rename_doc("User", old, "mpass_raven_new_name@example.com", force=True)
+
+		self.assertEqual(ensure_raven_user(new), Outcome.REVOKED)
+		self.assertTrue(was_granted(new))
+		self.assertFalse(was_granted(old))
+
 	def test_backfill_does_nothing_without_sso(self):
 		user = mpass_member("mpass_raven_backfill_no_sso@example.com")
 
@@ -212,6 +245,7 @@ class TestSsoDetection(unittest.TestCase):
 		with patch.dict(sys.modules, {"frappe.mpass_sso": None}):
 			self.assertFalse(sso_enabled())
 
+	@unittest.skipUnless(MPASS_LAYER, NEEDS_MPASS_LAYER)
 	def test_the_mpass_layer_decides_when_present(self):
 		with patch.dict(os.environ, {**SSO_ENV, "MPASS_EDGE_SECRET": EDGE_SECRET}):
 			self.assertTrue(sso_enabled())
@@ -219,6 +253,7 @@ class TestSsoDetection(unittest.TestCase):
 			self.assertFalse(sso_enabled())
 
 
+@unittest.skipUnless(MPASS_LAYER, NEEDS_MPASS_LAYER)
 class TestMpassRavenUserOnSsoLogin(FrappeAPITestCase):
 	user = "mpass_raven_sso_login@example.com"
 

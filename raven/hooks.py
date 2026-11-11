@@ -141,8 +141,14 @@ doc_events = {
 	"User": {
 		"after_insert": "raven.raven.doctype.raven_user.raven_user.add_user_to_raven",
 		"on_update": "raven.raven.doctype.raven_user.raven_user.add_user_to_raven",
-		"on_trash": "raven.raven.doctype.raven_user.raven_user.remove_user_from_raven",
-		"after_rename": "raven.raven.doctype.raven_user.raven_user.rename_raven_user",
+		"on_trash": [
+			"raven.raven.doctype.raven_user.raven_user.remove_user_from_raven",
+			"raven.mpass_raven_user.clear_grant_marker",
+		],
+		"after_rename": [
+			"raven.raven.doctype.raven_user.raven_user.rename_raven_user",
+			"raven.mpass_raven_user.move_grant_marker",
+		],
 	},
 	"Department": {
 		"after_insert": "raven.raven_integrations.controllers.department.after_insert",
