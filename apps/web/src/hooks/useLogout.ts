@@ -76,8 +76,18 @@ const clearIndexedDB = async () => {
 }
 
 /**
+ * The platform logout URL the Pressingly/frappe fork puts in boot under mPass SSO.
+ * Frappe's own login page would sign an SSO user straight back in.
+ */
+const platformLogoutUrl = (): string | undefined => {
+    const url: unknown = window.frappe?.boot?.mpass_logout_url
+    return typeof url === "string" && url ? url : undefined
+}
+
+/**
  * Logs the user out and returns them to Frappe's login page, with redirect-to
- * pointing back at this app so logging in again lands in Raven.
+ * pointing back at this app so logging in again lands in Raven. Under mPass SSO
+ * it goes to the platform logout URL instead.
  *
  * Order matters:
  * 1. Unsubscribe push — needs the still-authenticated session.
@@ -156,7 +166,7 @@ export function useLogout(): { logout: () => Promise<void>; isLoggingOut: boolea
 
         const base = import.meta.env.VITE_BASE_NAME
         const appPath = base ? `/${base}` : "/"
-        window.location.replace(`/login?redirect-to=${encodeURIComponent(appPath)}`)
+        window.location.replace(platformLogoutUrl() ?? `/login?redirect-to=${encodeURIComponent(appPath)}`)
     }, [frappeLogout])
 
     return { logout, isLoggingOut }
